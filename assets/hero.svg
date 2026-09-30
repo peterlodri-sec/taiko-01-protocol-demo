@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="600" viewBox="0 0 1200 600" role="img" aria-label="taiko-01-protocol-demo hero">
+  <rect width="1200" height="600" fill="#0b0e14"/>
+  <g stroke="#161c2a" stroke-width="1">
+    <path d="M0 120h1200M0 240h1200M0 360h1200M0 480h1200"/>
+    <path d="M120 0v600M240 0v600M360 0v600M480 0v600M600 0v600M720 0v600M840 0v600M960 0v600M1080 0v600"/>
+  </g>
+  <g fill="#2a3348" font-family="monospace" font-size="18">
+    <text x="60" y="66">0 1 1 0 1 0 1 1 0 1 0 0 1 0</text>
+    <text x="810" y="66">1 0 0 1 0 1 0 0 1 1 0 1 0 1</text>
+    <text x="60" y="556">1 0 1 0 0 1 1 0 1 0 1 1 0 0</text>
+    <text x="810" y="556">0 1 0 1 1 0 0 1 0 1 0 0 1 1</text>
+  </g>
+  <text x="600" y="300" font-family="monospace" font-size="170" font-weight="700" fill="#ff5c5c" text-anchor="middle">0/1</text>
+  <text x="600" y="404" font-family="system-ui, sans-serif" font-size="40" font-weight="600" fill="#e8e6e3" text-anchor="middle" letter-spacing="1">PROVE IT. DON'T ASSERT IT.</text>
+  <text x="600" y="452" font-family="system-ui, sans-serif" font-size="20" fill="#8a93a6" text-anchor="middle">sovereign · honest · verifiable · deterministic · the 0/1 protocol lane</text>
+  <rect y="594" width="1200" height="6" fill="#c9a227"/>
+  <circle cx="600" cy="430" r="300" fill="none" stroke="#c9a227" stroke-width="1" opacity="0.12"/>
+</svg>

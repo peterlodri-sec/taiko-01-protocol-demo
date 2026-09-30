@@ -1,50 +1,58 @@
-# taiko-01-protocol-demo
+![taiko-01-protocol-demo](assets/hero.svg)
 
-0/1 protocol demos for Taiko — built to show the protocol mechanics, not the
-UI. Two end-to-end demos, both in Rust, both anchored on the same principle:
-**prove it, don't assert it.**
+# taiko-01-protocol-demo — the 0/1 protocol lane
 
-## Idea 1 — Deterministic preconfirmations via zero-alloc execution gates
+> two end-to-end demos, no UI fluff, pure protocol mechanics. built to answer
+> one question: how far can deterministic, verifiable memory bounds be pushed
+> at the preconfirmation layer before state touches L1.
+>
+> rust · blake3 · ed25519-dalek · mold linker · target-cpu=native · fat LTO
 
-A based sequencer / preconfirmation provider validates, gates, and verifies a
-state-transition request before L1 inclusion. The hot path is zero-alloc
-(fixed-size arrays, no heap), with a `#![no_std]`-shaped design.
+## idea 1 — deterministic preconfirmations via zero-alloc execution gates
 
-- `PreconfRequest` — a state transition, a monotonic sequence, and an Ed25519
+a based sequencer validates, gates, and verifies a state transition before L1
+inclusion. the hot path is zero-alloc — fixed-size arrays, no heap.
+
+- `PreconfRequest` — a state transition, a monotonic sequence, an ed25519
   signature over both.
-- `Gate::adjudicate` — the execution gate. It refuses a replayed sequence, a
-  bad signature (charging the no-refunds budget), or an exhausted budget; and
-  it commits an accepted transition into a hash-verified ledger head, emitting
-  the new state root.
+- `Gate::adjudicate` — the gate. refuses a replay, a bad signature (charging
+  the no-refunds budget), or an exhausted budget; commits an accepted
+  transition into a hash-verified ledger head and emits the new state root.
 
-The narrative: **sub-second preconfirmations, but only for requests the gate
-can actually verify.** It admits what it can verify and refuses what it cannot.
+*it admits what it can verify and refuses what it cannot.*
 
-## Idea 2 — Capability-gated agent runtime with an integrity notary
+## idea 2 — capability-gated agent runtime with an integrity notary
 
-A Vaked-style capability executes an off-chain computation, producing a
-hash-verified, monotonic trace; the notary anchors the state proof as a
-receipt a verifier (a Taiko L2 contract) can check.
+a vaked-style capability executes an off-chain computation, producing a
+hash-verified monotonic trace; the notary anchors the state proof as a receipt
+a verifier (a taiko L2 contract) can check.
 
 - `Capability` — a named permission with a hard step budget.
-- `Trace` — a hash-linked, monotonic ledger. Order matters; it is not
+- `Trace` — a hash-linked monotonic ledger. order matters; it is not
   commutative.
-- `Notary::execute` — runs the steps within budget, or refuses (never silently
-  truncates). `Notary::verify` recomputes the root and checks the receipt.
+- `Notary::execute` — runs within budget or refuses, never truncates.
+- `Notary::verify` — recomputes the root and checks the receipt.
 
-The narrative: **an autonomous agent runtime whose every step compiles down to
-0/1 verifiability on an L2 EVM layer** — bridging the ERC-8004 agent push with
-cryptographic protocol verifiability.
+*every step compiles down to 0/1 verifiability on an L2 EVM layer.*
 
-## Run
+## run
 
 ```bash
-cargo test   # 7 tests: gates refuse, traces verify, order matters
+cargo test              # 7 tests: gates refuse, traces verify, order matters
+cargo build --release   # target-cpu=native, fat LTO, panic=abort, stripped
 ```
 
-`blake3` is the commitment primitive; `ed25519-dalek` is the signature.
+fast-linker note: `mold` / `wild` are the intended release linkers on Linux;
+macOS uses the system `ld` (mold does not yet link this project's build
+scripts on Darwin).
 
-## The pitch
+## the pitch
 
-> *"I built this to test how far we can push deterministic, verifiable memory
+> *"i built this to test how far we can push deterministic, verifiable memory
 > bounds at the preconfirmation layer before state ever touches L1 storage."*
+
+---
+
+*eternal love for IRL support and the research background — 8b-is
+(Chris, Alex, Nate). from love, from within, for all who are honest and ready
+to be loved.*

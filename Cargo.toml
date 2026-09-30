@@ -10,5 +10,8 @@ blake3 = "1"
 ed25519-dalek = "2"
 
 [profile.release]
-lto = true
+opt-level = 3
+lto = "fat"
 codegen-units = 1
+panic = "abort"
+strip = true

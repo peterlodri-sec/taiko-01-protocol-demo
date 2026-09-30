@@ -1,0 +1,6 @@
+[build]
+# Optimize for the host CPU.
+# Fast-linker path (mold / wild) is the intended release linker on Linux.
+# macOS uses the system linker (`ld`): mold does not yet link this
+# project's build scripts on Darwin, so we stay honest and use `ld` here.
+rustflags = ["-C", "target-cpu=native"]
