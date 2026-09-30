@@ -13,6 +13,9 @@
 
 pub mod capability;
 pub mod preconf;
+pub mod spherepop;
+
+pub use spherepop::{Step, Walk, GOVERNING_SEQUENCE};
 
 use ed25519_dalek::{Signature, VerifyingKey};
 

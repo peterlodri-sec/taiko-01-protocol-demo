@@ -2,10 +2,15 @@
 //!
 //! A based sequencer / preconfirmation provider validates, gates, and verifies
 //! a state-transition request before L1 block inclusion. The hot path is
-//! zero-alloc: fixed-size arrays, no heap. Every request is either signed or
-//! refused — the gate admits what it can verify and refuses what it cannot.
+//! zero-alloc: fixed-size arrays, no heap. Every request walks the SpherePOP
+//! governing sequence — it is either signed or refused, and the step where it
+//! stopped is always recorded.
 
-use crate::{hash, verify_signature, Budget, Hash};
+use crate::{
+    hash, verify_signature,
+    spherepop::{Step, Walk},
+    Budget, Hash,
+};
 
 /// A preconfirmation request: a state transition, a monotonic sequence, and a
 /// signature over both.
@@ -36,12 +41,14 @@ pub enum GateVerdict {
 }
 
 /// The preconfirmation gate. Zero-alloc hot path: a pinned authority, a
-/// monotonic sequence, a no-refunds budget, and a hash-linked ledger head.
+/// monotonic sequence, a no-refunds budget, a hash-linked ledger head, and a
+/// `Walk` that records where on the governing sequence it stopped.
 pub struct Gate {
     authority: [u8; 32],
     last_sequence: u64,
     budget: Budget,
     head: Hash,
+    walk: Walk,
 }
 
 pub const BAD_SIGNATURE_COST: u32 = 5;
@@ -53,32 +60,53 @@ impl Gate {
             last_sequence: 0,
             budget: Budget::new(budget_cap),
             head: [0u8; 32],
+            walk: Walk::start(),
         }
     }
 
-    /// Adjudicate a request: verify, gate, and — if valid — commit to the ledger.
+    /// The step the last adjudication stopped at — the transformation record.
+    pub fn walk(&self) -> Step {
+        self.walk.at()
+    }
+
+    /// Adjudicate a request: walk the governing sequence and emit a verdict.
+    /// Nothing is asserted; every path ends at a recorded step.
     pub fn adjudicate(&mut self, request: &PreconfRequest) -> GateVerdict {
-        // 0. Budget: once the no-refunds budget is exhausted, the gate closes —
-        //    no further work, no further charges.
+        // POP — request popped from the stream.
+        self.walk = Walk::start();
+        // REFUSE — refuse what cannot be verified, before anything binds.
+        // The no-refunds budget closes the gate first: an exhausted budget
+        // refuses everything without doing further work or further charges.
         if self.budget.exhausted() {
+            self.walk = Walk(Step::Refuse);
             return GateVerdict::RefusedBudgetExhausted;
         }
-        // 1. Monotonic sequence: a replayed or out-of-order request is refused.
         if request.sequence <= self.last_sequence {
+            self.walk = Walk(Step::Refuse);
             return GateVerdict::RefusedNonMonotonic;
         }
-        // 2. Signature: a forged or tampered request is refused and charged.
         if !verify_signature(&self.authority, &request.signed_message(), &request.signature) {
             self.budget = self.budget.charge(BAD_SIGNATURE_COST);
+            self.walk = Walk(Step::Refuse);
             return GateVerdict::RefusedBadSignature;
         }
-        // 3. Accept: commit the transition into the hash-verified ledger head.
+        // BIND — only a verified request may bind: advance the sequence.
+        self.walk = Walk(Step::Bind);
+        self.last_sequence = request.sequence;
+        // TRANSFORM — apply the transition to the ledger head.
+        self.walk = Walk(Step::Transform);
         let mut commit = [0u8; 64];
         commit[..32].copy_from_slice(&self.head);
         commit[32..].copy_from_slice(&request.state_transition);
         let state_root = hash(&commit);
+        // VERIFY — the commitment is deterministic: an external verifier
+        // recomputes the root from the same inputs (head + transition) and
+        // compares. The gate does not assert its own hash back to itself; it
+        // hands the commitment over for checking.
+        self.walk = Walk(Step::Verify);
+        // COLLAPSE — commit the root and emit the verdict.
         self.head = state_root;
-        self.last_sequence = request.sequence;
+        self.walk = Walk(Step::Collapse);
         GateVerdict::Accepted { state_root }
     }
 }
@@ -115,6 +143,7 @@ mod tests {
             GateVerdict::Accepted { state_root } => assert_ne!(state_root, [0u8; 32]),
             other => panic!("expected accepted, got {other:?}"),
         }
+        assert_eq!(gate.walk(), Step::Collapse);
     }
 
     #[test]
@@ -125,6 +154,7 @@ mod tests {
         request.state_transition[0] ^= 1; // tamper
         assert_eq!(gate.adjudicate(&request), GateVerdict::RefusedBadSignature);
         assert_eq!(gate.budget.spent(), BAD_SIGNATURE_COST);
+        assert_eq!(gate.walk(), Step::Refuse);
     }
 
     #[test]
@@ -135,6 +165,7 @@ mod tests {
         assert!(matches!(gate.adjudicate(&first), GateVerdict::Accepted { .. }));
         let replayed = signed_request(&signing, [2u8; 32], 7); // same sequence
         assert_eq!(gate.adjudicate(&replayed), GateVerdict::RefusedNonMonotonic);
+        assert_eq!(gate.walk(), Step::Refuse);
     }
 
     #[test]
@@ -146,13 +177,11 @@ mod tests {
             sequence: 1,
             signature: [0u8; 64],
         };
-        // Two bad signatures exhaust the budget (5 + 5 = 10 = cap).
         assert_eq!(gate.adjudicate(&bad), GateVerdict::RefusedBadSignature);
         let bad2 = PreconfRequest { sequence: 2, ..bad };
         assert_eq!(gate.adjudicate(&bad2), GateVerdict::RefusedBadSignature);
-        // Now the budget is exhausted: even a correctly sequenced request is
-        // refused at the budget gate, not re-examined.
         let any = PreconfRequest { sequence: 3, ..bad };
         assert_eq!(gate.adjudicate(&any), GateVerdict::RefusedBudgetExhausted);
+        assert_eq!(gate.walk(), Step::Refuse);
     }
 }

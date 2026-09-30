@@ -1,12 +1,16 @@
 //! Idea 2 — Capability-gated agent runtime with an integrity notary.
 //!
-//! A Vaked-style capability graph executes an off-chain computation, producing
-//! a hash-verified, monotonic trace; the notary anchors the state proof as a
-//! receipt that a verifier (Taiko L2 contract) can check. Bounded by an
-//! explicit step budget: exceed it and the execution is refused, not silently
-//! truncated.
+//! A Vaked-style capability executes an off-chain computation, producing a
+//! hash-verified, monotonic trace; the notary anchors the state proof as a
+//! receipt that a verifier (Taiko L2 contract) can check. Execution walks the
+//! SpherePOP governing sequence — exceed the budget and the run is refused,
+//! not silently truncated.
 
-use crate::{hash, Hash};
+use crate::{
+    hash,
+    spherepop::{Step, Walk},
+    Hash,
+};
 
 /// A capability: a named permission with a hard step budget.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -54,9 +58,11 @@ pub struct Receipt {
 }
 
 /// The notary. Executes a capability-gated program and emits a receipt, or
-/// refuses when the budget is exceeded. The receipt is a state proof — a
-/// verifier can recompute the trace root and check it against the commitment.
-pub struct Notary;
+/// refuses when the budget is exceeded. It walks the governing sequence and
+/// records where each run stopped.
+pub struct Notary {
+    walk: Walk,
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum NotaryError {
@@ -64,20 +70,42 @@ pub enum NotaryError {
 }
 
 impl Notary {
+    pub fn new() -> Self {
+        Self { walk: Walk::start() }
+    }
+
+    /// The step the last execution stopped at — the transformation record.
+    pub fn walk(&self) -> Step {
+        self.walk.at()
+    }
+
     /// Execute `steps` under `capability`, starting from a `seed` (the initial
     /// state root). Refuses if the step count exceeds the capability budget.
     pub fn execute(
+        &mut self,
         capability: &Capability,
         seed: Hash,
         steps: &[Hash],
     ) -> Result<Receipt, NotaryError> {
+        // POP — the capability and its steps pop into the runtime.
+        self.walk = Walk::start();
+        // REFUSE — an oversized program is refused before any execution.
         if steps.len() as u32 > capability.step_budget {
+            self.walk = Walk(Step::Refuse);
             return Err(NotaryError::BudgetExceeded);
         }
+        // BIND — bind the run to the seed (initial state root).
+        self.walk = Walk(Step::Bind);
         let mut trace = Trace::new(seed);
+        // TRANSFORM — each step transforms the hash-linked trace.
+        self.walk = Walk(Step::Transform);
         for step in steps {
             trace.append(step);
         }
+        // VERIFY — the head is deterministic; a verifier can recompute it.
+        self.walk = Walk(Step::Verify);
+        // COLLAPSE — emit the receipt: the collapsed execution hash.
+        self.walk = Walk(Step::Collapse);
         Ok(Receipt {
             execution_hash: trace.head(),
             steps_used: trace.steps(),
@@ -92,7 +120,9 @@ impl Notary {
         steps: &[Hash],
         receipt: &Receipt,
     ) -> bool {
-        Notary::execute(capability, seed, steps)
+        let mut notary = Notary::new();
+        notary
+            .execute(capability, seed, steps)
             .map(|expected| expected == *receipt)
             .unwrap_or(false)
     }
@@ -109,8 +139,10 @@ mod tests {
             step_budget: 4,
         };
         let steps = [[1u8; 32], [2u8; 32], [3u8; 32]];
-        let receipt = Notary::execute(&capability, [0u8; 32], &steps).unwrap();
+        let mut notary = Notary::new();
+        let receipt = notary.execute(&capability, [0u8; 32], &steps).unwrap();
         assert_eq!(receipt.steps_used, 3);
+        assert_eq!(notary.walk(), Step::Collapse);
         assert!(Notary::verify(&capability, [0u8; 32], &steps, &receipt));
     }
 
@@ -121,10 +153,12 @@ mod tests {
             step_budget: 2,
         };
         let steps = [[1u8; 32], [2u8; 32], [3u8; 32]];
+        let mut notary = Notary::new();
         assert_eq!(
-            Notary::execute(&capability, [0u8; 32], &steps),
+            notary.execute(&capability, [0u8; 32], &steps),
             Err(NotaryError::BudgetExceeded)
         );
+        assert_eq!(notary.walk(), Step::Refuse);
     }
 
     #[test]
@@ -135,8 +169,9 @@ mod tests {
         };
         let forward = [[1u8; 32], [2u8; 32], [3u8; 32]];
         let backward = [[3u8; 32], [2u8; 32], [1u8; 32]];
-        let a = Notary::execute(&capability, [0u8; 32], &forward).unwrap();
-        let b = Notary::execute(&capability, [0u8; 32], &backward).unwrap();
+        let mut notary = Notary::new();
+        let a = notary.execute(&capability, [0u8; 32], &forward).unwrap();
+        let b = notary.execute(&capability, [0u8; 32], &backward).unwrap();
         assert_ne!(a.execution_hash, b.execution_hash);
     }
 }

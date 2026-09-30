@@ -55,6 +55,20 @@ scripts on Darwin).
 > *"i built this to test how far we can push deterministic, verifiable memory
 > bounds at the preconfirmation layer before state ever touches L1 storage."*
 
+## the spherepop foundational layer
+
+every request and every execution walks the governing sequence:
+
+```text
+POP → REFUSE → BIND → TRANSFORM → VERIFY → COLLAPSE
+```
+
+`Walk` records where each operation stopped — the transformation record. a
+refusal is legible (*refused at REFUSE*), a completion is legible (*collapsed
+at COLLAPSE*). unobserved is not low-salience: a gate that stopped is never
+silent about where. a plausible branch may be ranked; only a verified branch
+may be bound.
+
 ---
 
 *eternal love for IRL support and the research background — 8b-is
