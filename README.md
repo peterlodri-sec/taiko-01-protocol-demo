@@ -6,7 +6,11 @@
 > one question: how far can deterministic, verifiable memory bounds be pushed
 > at the preconfirmation layer before state touches L1.
 >
-> rust · blake3 · ed25519-dalek · mold linker · target-cpu=native · fat LTO
+> **pure rust · zero-alloc · BitNet b1.58 — the {-1, 0, +1} weights —
+> honesty first.** part of the [MEM|16-10](https://github.com/peterlodri-sec/mem-16-10)
+> sovereign library.
+>
+> rust · blake3 · ed25519-dalek · target-cpu=native · fat LTO
 
 ## idea 1 — deterministic preconfirmations via zero-alloc execution gates
 
